@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+
+<head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+    <script src="loader.js"></script>
+</head>
+
+<body style="background: #0f0f0f; color: white;">
+    <div id="loading-section">
+        <h1>Loading... (If this takes too long it means there was a serious error!)</h1>
+    </div>
+    <div id="mod-selector" style="display: none;">
+        <div id="loading-error"></div>
+        <form onsubmit="return selectMod(this)">
+            <br><br><br>
+            Select a mod to go to:
+            <br><br>
+            GitHub User: <input id="user" value="" required="required" />
+            <br>
+            GitHub Repository: <input id="repo" value="The-Modding-Tree" />
+            <br>
+            Git branch: <input id="branch" value="master" />
+            <br>
+            <button>Submit</button>
+        </form>
+    </div>
+</body>
