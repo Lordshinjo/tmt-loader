@@ -105,9 +105,8 @@ function rewriteTextMaybeHtml(text, htmlParser, baseUrl) {
     if (parsed.body.children.length == 0) {
         return text;
     }
-    const elem = parsed.body.children[0];
-    rewriteElementUrl(elem, baseUrl);
-    return elem.outerHTML;
+    rewriteUrls(parsed.body, baseUrl);
+    return parsed.body.innerHTML;
 }
 
 function rewriteUrls(elem, baseUrl) {
