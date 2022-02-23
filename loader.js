@@ -19,130 +19,86 @@ function loadMod() {
             if (!user) {
                 throw new Error('GitHub user not specified');
             }
+            // Fetch data about the specified branch from the GitHub API.
             const response = await fetch(`https://api.github.com/repos/${user}/${repo}/branches/${branch}`);
             const data = await response.json();
             if (data['message']) {
                 throw Error(`Failed fetching GitHub branch: ${data['message']}`);
             }
             const commit = data['commit']['sha'];
+            // Use JSDelivr stable URL for the last commit in the branch as base URL.
             const baseUrl = `https://cdn.jsdelivr.net/gh/${user}/${repo}@${commit}/`;
             await loadFullMod(baseUrl);
         })
         .catch((err) => {
             console.error(err);
-            setTimeout(() => { // Run in timeout to make sure the document is ready
-                document.getElementById('loading-error').innerHTML = '' + err;
-                document.getElementById('loading-section').style = 'display: none';
-                document.getElementById('mod-selector').style = null;
-                document.getElementById('user').value = user;
-                document.getElementById('repo').value = repo;
-                document.getElementById('branch').value = branch;
-            }, 0);
+            document.getElementById('loading-error').innerHTML = '' + err;
+            document.getElementById('loading-section').style = 'display: none';
+            document.getElementById('mod-selector').style = null;
+            document.getElementById('user').value = user;
+            document.getElementById('repo').value = repo;
+            document.getElementById('branch').value = branch;
         });
   
 }
 
 async function loadFullMod(baseUrl) {
+    // Parse the index.html of the mod as HTML.
     const indexResponse = await fetch(new URL('index.html', baseUrl));
     const indexText = await indexResponse.text();
     const htmlParser = new DOMParser();
     const html = htmlParser.parseFromString(indexText, 'text/html');
 
-    const toAppend = [];
+    // Create a <base /> element in the head so that all relative URLS are rooted at the specified
+    // base URL.
+    const base = document.createElement('base');
+    base.href = baseUrl;
+    document.head.appendChild(base);
+
+    // List all non-script elements and scripts to be appended.
+    const elemToAppend = [];
+    const scriptToAppend = [];
     for (const elem of html.head.children) {
-        if (elem.tagName != 'SCRIPT') {
-            rewriteElementUrl(elem, baseUrl);
-            toAppend.push(elem);
+        if (elem.tagName == 'SCRIPT') {
+            scriptToAppend.push(elem.attributes.src.value);
+        } else {
+            elemToAppend.push(elem);
         }
     }
-    for (const elem of toAppend) {
+
+    // Actually append all non-script elements.
+    for (const elem of elemToAppend) {
         document.head.appendChild(elem);
     }
 
-    const beforeFiles = [];
-    const afterFiles = [];
-    let isBefore = true;
-    for (const script of html.head.getElementsByTagName('script')) {
-        const src = script.attributes.src.value;
-        if (src === 'js/technical/loader.js') {
-            isBefore = false;
-            // And do not load that file or it will try to load wrong files
-        } else if (isBefore) {
-            beforeFiles.push(src);
-        } else {
-            afterFiles.push(src);
-        }
+    // And append all scripts 1 by 1.
+    for (const script of scriptToAppend) {
+        await appendScript(script);
     }
 
-    await appendAllScripts(baseUrl, beforeFiles);
-    const modFiles = modInfo['modFiles'];
-    if (modFiles) { // old mods don't have this, so just skip it
-        await appendAllScripts(new URL('js/', baseUrl), modFiles);
+    // Now completely replace this document's body by the parsed index's body.
+    // We also remove attributes that are set in our index to make sure they are replaced.
+    document.body.removeAttribute('style');
+    document.body.removeAttribute('onload');
+    document.body.innerHTML = html.body.innerHTML;
+    for (const attr of html.body.attributes) {
+        document.body.setAttribute(attr.name, attr.value);
     }
-    await appendAllScripts(baseUrl, afterFiles);
 
-    rewriteUrls(html.body, baseUrl);
-
-    document.body.style = null;
-    document.body.outerHTML = html.body.outerHTML;
-    rewriteLayers(htmlParser, baseUrl);
-    load();
-}
-
-function rewriteLayers(htmlParser, baseUrl) {
-    for (const layer of Object.keys(layers)) {
-    // probably more things to fix
-        layers[layer]['symbol'] = rewriteTextMaybeHtml(
-            layers[layer]['symbol'], htmlParser, baseUrl);
+    // Then finally call the load function (from the body's onload in case that was changed to
+    // another function).
+    if (document.body.onload) {
+        document.body.onload();
     }
 }
 
-function rewriteTextMaybeHtml(text, htmlParser, baseUrl) {
-    if (!text) {
-        return text;
-    }
-    const parsed = htmlParser.parseFromString(text, 'text/html');
-    if (parsed.body.children.length == 0) {
-        return text;
-    }
-    rewriteUrls(parsed.body, baseUrl);
-    return parsed.body.innerHTML;
-}
-
-function rewriteUrls(elem, baseUrl) {
-    rewriteElementUrl(elem, baseUrl);
-    for (const child of elem.children) {
-        rewriteUrls(child, baseUrl);
-    }
-}
-
-function rewriteElementUrl(elem, baseUrl) {
-    for (const attr of ['src', 'href']) {
-        if (elem.attributes[attr] && elem.attributes[attr].value) {
-            elem[attr] = new URL(elem.attributes[attr].value, baseUrl);
-        }
-    }
-}
-
-function appendAllScripts(baseUrl, paths) {
-    const promises = [];
-    for (const path of paths) {
-        promises.push(appendScript(baseUrl, path));
-    }
-    return Promise.all(promises);
-}
-
-
-function appendScript(baseUrl, path) {
+function appendScript(path) {
     return new Promise((resolve, reject) => {
-        const url = new URL(path, baseUrl);
         const script = document.createElement('script');
-        script.src = url;
+        script.src = path;
         script.async = false;
         script.onload = resolve;
         script.onerror = (e) => reject(Error(`${url} failed to load`));
         document.head.appendChild(script);
     });
 }
-
-loadMod();
