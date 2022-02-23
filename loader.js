@@ -1,19 +1,29 @@
+const _DEFAULT_BRANCH = 'master';
+const _DEFAULT_REPO = 'The-Modding-Tree';
+
 function selectMod(form) {
-    const user = form[0].value;
+    const params = new URLSearchParams();
+    params.append('user', form[0].value);
+
     const repo = form[1].value;
+    if (repo !== _DEFAULT_REPO) {
+        params.append('repo', repo);
+    }
+
     const branch = form[2].value;
-    window.location = (
-        `${window.location.origin}${window.location.pathname}` +
-    `?user=${user}&repo=${repo}&branch=${branch}`
-    );
+    if (branch !== _DEFAULT_BRANCH) {
+        params.append('branch', branch);
+    }
+
+    window.location.assign(`${window.location.origin}${window.location.pathname}?${params}`);
     return false;
 }
 
 function loadMod() {
     const params = new URLSearchParams(window.location.search);
     const user = params.get('user');
-    const repo = params.get('repo') || 'The-Modding-Tree';
-    const branch = params.get('branch') || 'master';
+    const repo = params.get('repo') || _DEFAULT_REPO;
+    const branch = params.get('branch') || _DEFAULT_BRANCH;
     return Promise.resolve()
         .then(async () => {
             if (!user) {
