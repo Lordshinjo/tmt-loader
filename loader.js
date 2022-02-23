@@ -81,10 +81,29 @@ async function loadFullMod(baseUrl) {
         document.head.appendChild(elem);
     }
 
-    // And append all scripts 1 by 1.
+    // Append all script in 2 batches:
+    // - 1st batch for all scripts before js/technical/loader.js, including mod.js which defines
+    //   the mod files to load
+    // - 2nd batch for all mod files and the scripts after js/technical/loader.js
+    const beforeFiles = [];
+    const afterFiles = [];
+    let isBefore = true;
     for (const script of scriptToAppend) {
-        await appendScript(script);
+        if (script === 'js/technical/loader.js') {
+            isBefore = false;
+            // And do not load that file, we want to load mod files manually.
+        } else if (isBefore) {
+            beforeFiles.push(script);
+        } else {
+            afterFiles.push(script);
+        }
     }
+
+    await appendAllScripts(beforeFiles);
+    const modFiles = modInfo['modFiles'] ? // old mods don't have this, so just skip it
+        modInfo['modFiles'].map((script) => `js/${script}`)
+        : [];
+    await appendAllScripts([...modFiles, ...afterFiles]);
 
     // Now completely replace this document's body by the parsed index's body.
     // We also remove attributes that are set in our index to make sure they are replaced.
@@ -100,6 +119,14 @@ async function loadFullMod(baseUrl) {
     if (document.body.onload) {
         document.body.onload();
     }
+}
+
+function appendAllScripts(paths) {
+    const promises = [];
+    for (const path of paths) {
+        promises.push(appendScript(path));
+    }
+    return Promise.all(promises);
 }
 
 function appendScript(path) {
