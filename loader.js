@@ -1,18 +1,28 @@
 const _DEFAULT_BRANCH = 'master';
 const _DEFAULT_REPO = 'The-Modding-Tree';
+const _DEFAULT_LOAD_ONLY_MOD_FILES = 'false';
+
+const _TMT_USER = 'Acamaeda';
+const _TMT_REPO = 'The-Modding-Tree';
+const _TMT_BRANCH = 'master';
 
 function selectMod(form) {
     const params = new URLSearchParams();
-    params.append('user', form[0].value);
+    params.append('user', form.user.value);
 
-    const repo = form[1].value;
+    const repo = form.repo.value;
     if (repo !== _DEFAULT_REPO) {
         params.append('repo', repo);
     }
 
-    const branch = form[2].value;
+    const branch = form.branch.value;
     if (branch !== _DEFAULT_BRANCH) {
         params.append('branch', branch);
+    }
+
+    const loadOnlyModFiles = '' + form.loadOnlyModFiles.checked;
+    if (loadOnlyModFiles !== _DEFAULT_LOAD_ONLY_MOD_FILES) {
+        params.append('loadOnlyModFiles', loadOnlyModFiles);
     }
 
     window.location.assign(`${window.location.origin}${window.location.pathname}?${params}`);
@@ -24,21 +34,17 @@ function loadMod() {
     const user = params.get('user');
     const repo = params.get('repo') || _DEFAULT_REPO;
     const branch = params.get('branch') || _DEFAULT_BRANCH;
+    const loadOnlyModFiles = (params.get('loadOnlyModFiles') || _DEFAULT_LOAD_ONLY_MOD_FILES) == 'true';
     return Promise.resolve()
         .then(async () => {
             if (!user) {
                 throw new Error('GitHub user not specified');
             }
-            // Fetch data about the specified branch from the GitHub API.
-            const response = await fetch(`https://api.github.com/repos/${user}/${repo}/branches/${branch}`);
-            const data = await response.json();
-            if (data['message']) {
-                throw Error(`Failed fetching GitHub branch: ${data['message']}`);
-            }
-            const commit = data['commit']['sha'];
-            // Use JSDelivr stable URL for the last commit in the branch as base URL.
-            const baseUrl = `https://cdn.jsdelivr.net/gh/${user}/${repo}@${commit}/`;
-            await loadFullMod(baseUrl);
+            const baseUrlPromise = loadOnlyModFiles ? getBaseUrl(_TMT_USER, _TMT_REPO, _TMT_BRANCH) : getBaseUrl(user, repo, branch);
+            // if not loading only mod files, use an empty string so that URLs are just relative
+            const modUrl = loadOnlyModFiles ? (await getBaseUrl(user, repo, branch)) : '';
+            const baseUrl = await baseUrlPromise;
+            await loadFullMod(baseUrl, modUrl);
         })
         .catch((err) => {
             console.error(err);
@@ -52,7 +58,18 @@ function loadMod() {
   
 }
 
-async function loadFullMod(baseUrl) {
+async function getBaseUrl(user, repo, branch) {
+    const response = await fetch(`https://api.github.com/repos/${user}/${repo}/branches/${branch}`);
+    const data = await response.json();
+    if (data['message']) {
+        throw Error(`Failed fetching GitHub branch ${user}/${repo}/${branch}: ${data['message']}`);
+    }
+    const commit = data['commit']['sha'];
+    // Use JSDelivr stable URL for the last commit in the branch as base URL.
+    return `https://cdn.jsdelivr.net/gh/${user}/${repo}@${commit}/`;
+}
+
+async function loadFullMod(baseUrl, modUrl) {
     // Parse the index.html of the mod as HTML.
     const indexResponse = await fetch(new URL('index.html', baseUrl));
     const indexText = await indexResponse.text();
@@ -93,7 +110,11 @@ async function loadFullMod(baseUrl) {
             isBefore = false;
             // And do not load that file, we want to load mod files manually.
         } else if (isBefore) {
-            beforeFiles.push(script);
+            if (script === 'js/mod.js') {
+                beforeFiles.push(`${modUrl}${script}`);
+            } else {
+                beforeFiles.push(script);
+            }
         } else {
             afterFiles.push(script);
         }
@@ -101,7 +122,7 @@ async function loadFullMod(baseUrl) {
 
     await appendAllScripts(beforeFiles);
     const modFiles = modInfo['modFiles'] ? // old mods don't have this, so just skip it
-        modInfo['modFiles'].map((script) => `js/${script}`)
+        modInfo['modFiles'].map((script) => `${modUrl}js/${script}`)
         : [];
     await appendAllScripts([...modFiles, ...afterFiles]);
 
